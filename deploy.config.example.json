@@ -1,0 +1,12 @@
+{
+  "server": {
+    "host": "your-server.com",
+    "user": "username",
+    "port": 22,
+    "remotePath": "/var/www/html/christmas-tree"
+  },
+  "build": {
+    "outputDir": "dist",
+    "archiveName": "christmas-tree.tar.gz"
+  }
+}
