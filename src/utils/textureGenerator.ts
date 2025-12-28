@@ -100,9 +100,16 @@ export function createDefaultPhotoTexture(
 export function createTextureFromImage(imageUrl: string): Promise<THREE.Texture> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'Anonymous';
+    // 移除 crossOrigin，防止 Data URL 加载失败
+    // img.crossOrigin = 'Anonymous'; 
     
+    // 设置超时保护，防止 Promise 永久挂起
+    const timeoutId = setTimeout(() => {
+      reject(new Error('图片加载超时 (5秒)'));
+    }, 5000);
+
     img.onload = () => {
+      clearTimeout(timeoutId);
       try {
         // 固定纹理尺寸为 512x512，与默认照片一致
         const width = 512;
@@ -142,6 +149,9 @@ export function createTextureFromImage(imageUrl: string): Promise<THREE.Texture>
         // 5. 创建纹理
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
+        // 设置过滤模式，防止纹理模糊或消失
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
         texture.needsUpdate = true;
         
         console.log('Canvas纹理生成成功，尺寸:', width, 'x', height);
@@ -154,6 +164,7 @@ export function createTextureFromImage(imageUrl: string): Promise<THREE.Texture>
     };
 
     img.onerror = (error) => {
+      clearTimeout(timeoutId);
       console.error('图片加载失败:', error);
       reject(new Error('图片加载失败'));
     };

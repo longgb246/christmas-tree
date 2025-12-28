@@ -23,6 +23,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
     const particlesRef = useRef<ParticleItem[]>([]);
     const photoParticlesRef = useRef<ParticleItem[]>([]);
     const focusedPhotoRef = useRef<ParticleItem | null>(null);
+    const defaultPhotoParticleRef = useRef<ParticleItem | null>(null);
     const mainGroupRef = useRef<THREE.Group | null>(null);
     const previousModeRef = useRef<ExperienceMode>(mode);
     const previousTextRef = useRef<string | undefined>(text);
@@ -44,6 +45,34 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         try {
           console.log('开始处理上传照片...');
           const texture = await createTextureFromImage(dataUrl);
+          
+          // 如果存在默认占位图，则移除它
+          if (defaultPhotoParticleRef.current) {
+            const defaultParticle = defaultPhotoParticleRef.current;
+            console.log('检测到默认占位图，正在移除...');
+            
+            // 从场景中移除 Mesh
+            if (mainGroupRef.current) {
+              mainGroupRef.current.remove(defaultParticle.mesh);
+            }
+            
+            // 从粒子数组中移除
+            particlesRef.current = particlesRef.current.filter(p => p !== defaultParticle);
+            photoParticlesRef.current = photoParticlesRef.current.filter(p => p !== defaultParticle);
+            
+            // 清理几何体和材质资源
+            if (defaultParticle.mesh.geometry) defaultParticle.mesh.geometry.dispose();
+            // 注意：材质可能是共享的，这里只清理独享的 photoMat (children[0].material)
+            // frameMesh 的材质是 goldMat (共享)，不应清理
+            const photoMesh = defaultParticle.mesh.children[0] as THREE.Mesh;
+            if (photoMesh && photoMesh.material) {
+              (photoMesh.material as THREE.Material).dispose();
+            }
+            
+            defaultPhotoParticleRef.current = null;
+            console.log('默认占位图已移除');
+          }
+
           if (addPhotoToSceneRef.current) {
             console.log('调用 addPhotoToScene 添加照片到场景');
             addPhotoToSceneRef.current(texture);
@@ -126,7 +155,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         toneMapped: false // 忽略色调映射，使其看起来更亮（配合 Bloom）
       });
 
-      const addPhotoToScene = (texture: THREE.Texture) => {
+      const addPhotoToScene = (texture: THREE.Texture, isDefault: boolean = false) => {
         console.log('正在创建照片 Mesh...');
         // 检查纹理是否有效
         if (texture.image) {
@@ -139,6 +168,9 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         const photoGeo = new THREE.PlaneGeometry(PARTICLE_SIZES.photo.width - 0.2, PARTICLE_SIZES.photo.height - 0.2);
         const frameMesh = new THREE.Mesh(frameGeo, goldMat);
         
+        // 禁用视锥体剔除，防止照片在某些角度被错误剔除导致不可见
+        frameMesh.frustumCulled = false;
+        
         // 使用 DoubleSide 确保照片正反面都可见，防止因旋转导致不可见
         // 添加白色底色，如果纹理加载失败至少能看到白板
         const photoMat = new THREE.MeshBasicMaterial({ 
@@ -148,12 +180,19 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         });
         const photoMesh = new THREE.Mesh(photoGeo, photoMat);
         
+        // 同样禁用视锥体剔除
+        photoMesh.frustumCulled = false;
+        
         // 增加 Z 轴偏移，防止 Z-fighting
         photoMesh.position.z = 0.21;
         frameMesh.add(photoMesh);
 
         const basePos = calculateScatterPosition();
         frameMesh.position.copy(basePos);
+        
+        // 显式更新矩阵，确保变换立即生效
+        frameMesh.updateMatrix();
+        photoMesh.updateMatrix();
 
         // 使用随机索引来计算树上的位置，确保照片随机分布在树身范围内，而不是堆积在顶部
         // 范围取 0.1 到 0.9 避免太靠近顶部或底部
@@ -172,6 +211,10 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
           rotationVelocity: calculateRandomRotationVelocity(),
         };
 
+        if (isDefault) {
+          defaultPhotoParticleRef.current = particle;
+        }
+
         particlesRef.current.push(particle);
         photoParticlesRef.current.push(particle);
         mainGroup.add(frameMesh);
@@ -181,6 +224,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
       };
 
       // 将函数存储到 ref 中，供外部调用
+      // @ts-ignore - 忽略类型不匹配，因为我们修改了函数签名但 ref 类型定义没变
       addPhotoToSceneRef.current = addPhotoToScene;
 
       for (let i = 0; i < PARTICLE_CONFIG.mainParticleCount; i++) {
@@ -227,7 +271,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         mainGroup.add(mesh);
       }
 
-      addPhotoToScene(createDefaultPhotoTexture());
+      addPhotoToScene(createDefaultPhotoTexture(), true);
 
       const dustGeo = new THREE.BufferGeometry();
       const dustPos = new Float32Array(PARTICLE_CONFIG.dustParticleCount * 3);
@@ -366,6 +410,9 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
       return () => {
         renderer.dispose();
         composer.dispose();
+        if (containerRef.current && renderer.domElement) {
+          containerRef.current.removeChild(renderer.domElement);
+        }
       };
     }, [onLoaded]);  // 只依赖 onLoaded，避免重新创建场景
 
