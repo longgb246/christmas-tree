@@ -48,7 +48,7 @@ export function createCandyCaneTexture(): THREE.CanvasTexture {
 
 /**
  * 创建默认照片纹理
- * 生成带有 "JOYEUX NOËL" 文字和金色边框的纹理
+ * 生成带有 " ` NOËL" 文字和金色边框的纹理
  * 
  * @param options 纹理生成选项
  * @returns Three.js CanvasTexture 对象
@@ -92,27 +92,73 @@ export function createDefaultPhotoTexture(
 /**
  * 从图片 URL 创建纹理
  * 用于用户上传的照片
+ * 改为使用 Canvas 绘制，以确保兼容性并添加相框效果
  * 
  * @param imageUrl 图片的 Data URL 或普通 URL
  * @returns Promise<THREE.Texture>
  */
 export function createTextureFromImage(imageUrl: string): Promise<THREE.Texture> {
   return new Promise((resolve, reject) => {
-    const loader = new THREE.TextureLoader();
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
     
-    loader.load(
-      imageUrl,
-      (texture) => {
-        // 设置正确的色彩空间
+    img.onload = () => {
+      try {
+        // 固定纹理尺寸为 512x512，与默认照片一致
+        const width = 512;
+        const height = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('无法获取 Canvas 2D 上下文');
+        }
+
+        // 1. 绘制深色背景
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. 计算图片绘制尺寸（保持比例，居中显示）
+        // 留出 40px 的边距给相框
+        const availableWidth = width - 40;
+        const availableHeight = height - 40;
+        const scale = Math.min(availableWidth / img.width, availableHeight / img.height);
+        
+        const drawWidth = img.width * scale;
+        const drawHeight = img.height * scale;
+        const x = (width - drawWidth) / 2;
+        const y = (height - drawHeight) / 2;
+
+        // 3. 绘制图片
+        ctx.drawImage(img, x, y, drawWidth, drawHeight);
+
+        // 4. 绘制金色边框 (与 createDefaultPhotoTexture 风格一致)
+        ctx.strokeStyle = '#d4af37';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(20, 20, width - 40, height - 40);
+
+        // 5. 创建纹理
+        const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        
+        console.log('Canvas纹理生成成功，尺寸:', width, 'x', height);
         resolve(texture);
-      },
-      undefined,
-      (error: unknown) => {
+      } catch (error) {
         const errorMessage = error instanceof Error ? error.message : '未知错误';
-        reject(new Error(`纹理加载失败: ${errorMessage}`));
+        console.error('Canvas绘制失败:', errorMessage);
+        reject(new Error(`纹理生成失败: ${errorMessage}`));
       }
-    );
+    };
+
+    img.onerror = (error) => {
+      console.error('图片加载失败:', error);
+      reject(new Error('图片加载失败'));
+    };
+
+    img.src = imageUrl;
   });
 }
 

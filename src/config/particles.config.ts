@@ -20,6 +20,15 @@ export const PARTICLE_CONFIG: ParticleConfig = {
   
   /** 糖拐杖占比 */
   candyCaneRatio: 0.2,
+
+  /** 文字模式下的文字内容映射 */
+  textMap: {
+    ONE: '新春快乐',
+    TWO: '圣诞快乐',
+    THREE: '大家开心',
+    FOUR: '新的开始',
+    FIVE: '非常开心',
+  },
 };
 
 /**
@@ -134,6 +143,20 @@ export const FOCUS_MODE_CONFIG = {
   
   /** 背景粒子的缩放倍数 */
   backgroundScaleMultiplier: 0.5,
+} as const;
+
+/**
+ * 文字模式配置
+ */
+export const TEXT_MODE_CONFIG = {
+  /** 文字粒子缩放 */
+  scale: 0.5,
+  /** 文字颜色 */
+  color: 0xffd700, // 金色
+  /** 字体大小 */
+  fontSize: 100,
+  /** 字体粗细 */
+  fontWeight: 'bold',
 } as const;
 
 /**

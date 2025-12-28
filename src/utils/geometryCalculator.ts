@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { TREE_MODE_CONFIG, SCATTER_MODE_CONFIG } from '@config/particles.config';
+import { TREE_MODE_CONFIG, SCATTER_MODE_CONFIG, TEXT_MODE_CONFIG } from '@config/particles.config';
 import type { GeometryCalculation } from '@typings/index';
 
 /**
@@ -221,4 +221,94 @@ export function lerpVector3(
   alpha: number
 ): THREE.Vector3 {
   return new THREE.Vector3().lerpVectors(start, end, alpha);
+}
+
+/**
+ * 计算文字模式下的粒子位置
+ * 使用 Canvas 绘制文字并采样像素点作为粒子位置
+ * 
+ * @param text 要显示的文字
+ * @param particleCount 可用的粒子总数
+ * @returns 粒子位置数组
+ */
+export function calculateTextPositions(
+  text: string,
+  particleCount: number
+): THREE.Vector3[] {
+  const { fontSize, fontWeight, scale } = TEXT_MODE_CONFIG;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) {
+    console.error('无法获取 Canvas 上下文');
+    return [];
+  }
+
+  // 设置画布大小
+  const width = 1024;
+  const height = 512;
+  canvas.width = width;
+  canvas.height = height;
+
+  // 绘制文字
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `${fontWeight} ${fontSize}px "Microsoft YaHei", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, width / 2, height / 2);
+
+  // 获取像素数据
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  const positions: THREE.Vector3[] = [];
+  const pixels: { x: number, y: number }[] = [];
+
+  // 扫描像素，收集非透明点
+  // 步长设为 4 以减少计算量，根据需要调整
+  const step = 4; 
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const index = (y * width + x) * 4;
+      // alpha 通道大于 128 认为是有效点
+      if (data[index + 3] > 128) {
+        pixels.push({ x, y });
+      }
+    }
+  }
+
+  // 如果没有有效像素，返回空数组
+  if (pixels.length === 0) {
+    return [];
+  }
+
+  // 随机打乱像素顺序，使粒子分布更均匀
+  for (let i = pixels.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pixels[i], pixels[j]] = [pixels[j], pixels[i]];
+  }
+
+  // 将像素坐标转换为 3D 坐标
+  // 居中处理：(x - width/2, -(y - height/2))
+  // 缩放处理
+  const count = Math.min(particleCount, pixels.length);
+  
+  // 如果粒子数量不足以覆盖所有像素，我们只取前 count 个
+  // 如果粒子数量多于像素，多余的粒子可以隐藏或随机分布（这里我们只返回有效位置，Scene3D 处理多余粒子）
+  
+  for (let i = 0; i < pixels.length; i++) {
+    // 简单的映射：每个像素对应一个位置
+    // 为了让粒子填满文字，如果粒子数少于像素数，我们随机采样
+    // 如果粒子数多于像素数，我们循环使用像素位置
+    
+    const pixel = pixels[i % pixels.length];
+    
+    const x = (pixel.x - width / 2) * scale * 0.1; // 0.1 是额外的缩放系数，适配场景大小
+    const y = -(pixel.y - height / 2) * scale * 0.1;
+    const z = 0; // 文字在 Z=0 平面
+
+    positions.push(new THREE.Vector3(x, y, z));
+  }
+
+  return positions;
 }

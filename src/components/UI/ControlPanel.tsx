@@ -67,7 +67,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ visible, onFileUpload }) =>
           borderRadius: '9999px',
         }}>
           Add Memories
-          <input type="file" accept="image/*" onChange={onFileUpload} style={{ display: 'none' }} />
+          <input 
+            type="file" 
+            accept="image/*" 
+            multiple 
+            onChange={onFileUpload} 
+            style={{ display: 'none' }} 
+          />
         </label>
 
         <div style={{ textAlign: 'center' }}>

@@ -10,11 +10,13 @@ import * as THREE from 'three';
  * - TREE: 圣诞树形态（粒子组成圆锥螺旋）
  * - SCATTER: 散开形态（粒子随机分布）
  * - FOCUS: 聚焦形态（选中照片放大，其他粒子后退）
+ * - TEXT: 文字形态（粒子组成文字）
  */
 export enum ExperienceMode {
   TREE = 'TREE',
   SCATTER = 'SCATTER',
   FOCUS = 'FOCUS',
+  TEXT = 'TEXT',
 }
 
 /**
@@ -22,9 +24,14 @@ export enum ExperienceMode {
  * - PINCH: 捏合手势（拇指和食指靠近）
  * - FIST: 握拳手势（所有手指收拢）
  * - OPEN: 张开手势（所有手指展开）
+ * - ONE: 数字1手势
+ * - TWO: 数字2手势
+ * - THREE: 数字3手势
+ * - FOUR: 数字4手势
+ * - FIVE: 数字5手势
  * - NONE: 无手势识别
  */
-export type GestureType = 'PINCH' | 'FIST' | 'OPEN' | 'NONE';
+export type GestureType = 'PINCH' | 'FIST' | 'OPEN' | 'ONE' | 'TWO' | 'THREE' | 'FOUR' | 'FIVE' | 'NONE';
 
 /**
  * 手部数据接口
@@ -46,6 +53,8 @@ export interface HandData {
 export interface AppState {
   /** 当前体验模式 */
   mode: ExperienceMode;
+  /** 当前显示的文字（仅在 TEXT 模式下有效） */
+  text?: string;
   /** 手部追踪数据 */
   hand: HandData;
   /** 是否正在加载 */
@@ -111,6 +120,10 @@ export interface ParticleConfig {
   decorationRatio: number;
   /** 糖拐杖比例 */
   candyCaneRatio: number;
+  /** 文字模式下的文字内容映射 */
+  textMap: {
+    [key in GestureType]?: string;
+  };
 }
 
 /**

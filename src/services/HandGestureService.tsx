@@ -3,7 +3,7 @@
  * 使用 MediaPipe HandLandmarker 进行实时手势识别
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import { GESTURE_CONFIG, HAND_LANDMARKS } from '@config/particles.config';
 import type { HandData, GestureType, HandLandmark } from '@typings/index';
@@ -25,8 +25,9 @@ interface HandGestureServiceProps {
  * 1. 初始化 MediaPipe HandLandmarker
  * 2. 获取摄像头视频流
  * 3. 实时检测手部关键点
- * 4. 识别手势类型（捏合、握拳、张开）
+ * 4. 识别手势类型（捏合、握拳、张开、数字2-4）
  * 5. 通过回调函数向父组件传递手势数据
+ * 6. 在左下角显示摄像头预览和识别状态
  */
 const HandGestureService: React.FC<HandGestureServiceProps> = ({
   onHandUpdate,
@@ -35,6 +36,8 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const animationFrameRef = useRef<number>(0);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [currentGesture, setCurrentGesture] = useState<GestureType>('NONE');
 
   useEffect(() => {
     if (!enabled) return;
@@ -168,13 +171,35 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
       // 3. 识别手势类型
       let gesture: GestureType = 'NONE';
       
+      // 优先检测捏合
       if (pinchDistance < GESTURE_CONFIG.pinchThreshold) {
         gesture = 'PINCH';
       } else if (avgDistanceToWrist < GESTURE_CONFIG.fistThreshold) {
         gesture = 'FIST';
-      } else if (avgDistanceToWrist > GESTURE_CONFIG.openThreshold) {
-        gesture = 'OPEN';
+      } else {
+        // 计算伸出的手指数量
+        const extendedFingers = countExtendedFingers(landmarks);
+        
+        switch (extendedFingers) {
+          case 2:
+            gesture = 'TWO';
+            break;
+          case 3:
+            gesture = 'THREE';
+            break;
+          case 4:
+            gesture = 'FOUR';
+            break;
+          default:
+            // 如果没有明确的数字手势，但距离较大，则为 OPEN
+            if (avgDistanceToWrist > GESTURE_CONFIG.openThreshold) {
+              gesture = 'OPEN';
+            }
+            break;
+        }
       }
+
+      setCurrentGesture(gesture);
 
       // 4. 返回手势数据
       return {
@@ -184,6 +209,42 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
           y: palmCenter.y,
         },
       };
+    };
+
+    /**
+     * 计算伸出的手指数量
+     */
+    const countExtendedFingers = (landmarks: HandLandmark[]): number => {
+      let count = 0;
+      const wrist = landmarks[HAND_LANDMARKS.WRIST];
+
+      // 拇指检测：比较拇指指尖和指关节的 x 坐标（假设右手，左手需反转逻辑，或者使用距离判断）
+      // 更通用的方法：检查指尖是否比指关节离手腕更远
+      const thumbTip = landmarks[HAND_LANDMARKS.THUMB_TIP];
+      const thumbIp = landmarks[3]; // 拇指指间关节
+      const thumbMcp = landmarks[2]; // 拇指掌指关节
+      
+      // 拇指判断比较复杂，简化为：指尖到小指根部的距离 > 指关节到小指根部的距离
+      const pinkyMcp = landmarks[17];
+      if (calculateDistance2D(thumbTip, pinkyMcp) > calculateDistance2D(thumbIp, pinkyMcp)) {
+        count++;
+      }
+
+      // 其他四指：比较指尖到手腕的距离是否大于指关节到手腕的距离
+      const fingerIndices = [
+        { tip: 8, pip: 6 },  // 食指
+        { tip: 12, pip: 10 }, // 中指
+        { tip: 16, pip: 14 }, // 无名指
+        { tip: 20, pip: 18 }  // 小指
+      ];
+
+      fingerIndices.forEach(({ tip, pip }) => {
+        if (calculateDistance2D(landmarks[tip], wrist) > calculateDistance2D(landmarks[pip], wrist) * 1.2) { // 1.2 为阈值系数
+          count++;
+        }
+      });
+
+      return count;
     };
 
     /**
@@ -236,25 +297,82 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
     };
   }, [enabled, onHandUpdate]);
 
-  // 渲染隐藏的视频元素
+  // 渲染左下角的摄像头预览和控制组件
   return (
     <div
       style={{
         position: 'fixed',
-        bottom: 0,
-        right: 0,
-        opacity: 0,
-        pointerEvents: 'none',
-        zIndex: -1,
+        bottom: '20px',
+        left: '20px',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '10px',
       }}
     >
-      <video
-        ref={videoRef}
-        width={160}
-        height={120}
-        playsInline
-        muted
-      />
+      {/* 展开/收起按钮 */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          padding: '8px 16px',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: '20px',
+          cursor: 'pointer',
+          fontSize: '14px',
+          backdropFilter: 'blur(4px)',
+          transition: 'all 0.3s ease',
+        }}
+      >
+        {isExpanded ? '隐藏摄像头' : '显示摄像头'}
+      </button>
+
+      {/* 视频预览框 */}
+      <div
+        style={{
+          width: '240px',
+          height: '180px',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          position: 'relative',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          display: isExpanded ? 'block' : 'none',
+          transition: 'all 0.3s ease',
+        }}
+      >
+        <video
+          ref={videoRef}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transform: 'scaleX(-1)', // 镜像显示
+          }}
+          playsInline
+          muted
+        />
+        
+        {/* 手势状态显示 */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '0',
+            left: '0',
+            right: '0',
+            padding: '8px',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+            color: 'white',
+            textAlign: 'center',
+            fontSize: '14px',
+            fontWeight: 'bold',
+          }}
+        >
+          当前手势: {currentGesture === 'NONE' ? '未检测' : currentGesture}
+        </div>
+      </div>
     </div>
   );
 };

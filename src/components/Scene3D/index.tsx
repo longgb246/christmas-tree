@@ -8,38 +8,47 @@ import { ExperienceMode, type HandData, type ParticleItem } from '@typings/index
 import { SCENE_CONFIG, LIGHTING_CONFIG, LIGHT_POSITIONS, LIGHT_COLORS, POST_PROCESSING_CONFIG, ANIMATION_CONFIG, RENDERER_CONFIG } from '@config/scene.config';
 import { PARTICLE_CONFIG, PARTICLE_SIZES, MATERIAL_COLORS, TREE_MODE_CONFIG, SCATTER_MODE_CONFIG, FOCUS_MODE_CONFIG } from '@config/particles.config';
 import { createCandyCaneTexture, createDefaultPhotoTexture, createTextureFromImage } from '@utils/textureGenerator';
-import { calculateTreePosition, calculateScatterPosition, calculateRandomVelocity, calculateRandomRotationVelocity, applyTreeRotation, isOutOfBounds, calculateBackgroundPosition } from '@utils/geometryCalculator';
+import { calculateTreePosition, calculateScatterPosition, calculateRandomVelocity, calculateRandomRotationVelocity, applyTreeRotation, isOutOfBounds, calculateBackgroundPosition, calculateTextPositions } from '@utils/geometryCalculator';
 
 interface Scene3DProps {
   mode: ExperienceMode;
+  text?: string;
   hand: HandData;
   onLoaded: () => void;
 }
 
 const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps>(
-  ({ mode, hand, onLoaded }, ref) => {
+  ({ mode, text, hand, onLoaded }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const particlesRef = useRef<ParticleItem[]>([]);
     const photoParticlesRef = useRef<ParticleItem[]>([]);
     const focusedPhotoRef = useRef<ParticleItem | null>(null);
     const mainGroupRef = useRef<THREE.Group | null>(null);
     const previousModeRef = useRef<ExperienceMode>(mode);
+    const previousTextRef = useRef<string | undefined>(text);
+    const textPositionsRef = useRef<THREE.Vector3[]>([]);
     const addPhotoToSceneRef = useRef<((texture: THREE.Texture) => void) | null>(null);
     
     // 使用 ref 存储最新的 hand 和 mode 值，避免重新创建场景
     const handRef = useRef<HandData>(hand);
     const modeRef = useRef<ExperienceMode>(mode);
+    const textRef = useRef<string | undefined>(text);
     
     // 每次渲染时更新 ref
     handRef.current = hand;
     modeRef.current = mode;
+    textRef.current = text;
 
     useImperativeHandle(ref, () => ({
       addPhoto: async (dataUrl: string) => {
         try {
+          console.log('开始处理上传照片...');
           const texture = await createTextureFromImage(dataUrl);
           if (addPhotoToSceneRef.current) {
+            console.log('调用 addPhotoToScene 添加照片到场景');
             addPhotoToSceneRef.current(texture);
+          } else {
+            console.error('addPhotoToSceneRef.current 为空');
           }
         } catch (error) {
           console.error('添加照片失败:', error);
@@ -110,24 +119,53 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
       const greenMat = new THREE.MeshStandardMaterial({ color: MATERIAL_COLORS.green, metalness: 0.4, roughness: 0.5 });
       const redMat = new THREE.MeshPhysicalMaterial({ color: MATERIAL_COLORS.red, clearcoat: 1.0, clearcoatRoughness: 0.1, metalness: 0.5 });
       const candyCaneTexture = createCandyCaneTexture();
+      
+      // 创建文字模式专用的高亮材质
+      const textMat = new THREE.MeshBasicMaterial({ 
+        color: 0xffdd44, // 明亮的金黄色
+        toneMapped: false // 忽略色调映射，使其看起来更亮（配合 Bloom）
+      });
 
       const addPhotoToScene = (texture: THREE.Texture) => {
+        console.log('正在创建照片 Mesh...');
+        // 检查纹理是否有效
+        if (texture.image) {
+          console.log('纹理图片尺寸:', texture.image.width, 'x', texture.image.height);
+        } else {
+          console.warn('纹理图片对象为空');
+        }
+
         const frameGeo = new THREE.BoxGeometry(PARTICLE_SIZES.photo.width, PARTICLE_SIZES.photo.height, PARTICLE_SIZES.photo.depth);
         const photoGeo = new THREE.PlaneGeometry(PARTICLE_SIZES.photo.width - 0.2, PARTICLE_SIZES.photo.height - 0.2);
         const frameMesh = new THREE.Mesh(frameGeo, goldMat);
-        const photoMesh = new THREE.Mesh(photoGeo, new THREE.MeshBasicMaterial({ map: texture }));
-        photoMesh.position.z = 0.11;
+        
+        // 使用 DoubleSide 确保照片正反面都可见，防止因旋转导致不可见
+        // 添加白色底色，如果纹理加载失败至少能看到白板
+        const photoMat = new THREE.MeshBasicMaterial({ 
+          map: texture,
+          side: THREE.DoubleSide,
+          color: 0xffffff
+        });
+        const photoMesh = new THREE.Mesh(photoGeo, photoMat);
+        
+        // 增加 Z 轴偏移，防止 Z-fighting
+        photoMesh.position.z = 0.21;
         frameMesh.add(photoMesh);
 
         const basePos = calculateScatterPosition();
         frameMesh.position.copy(basePos);
 
+        // 使用随机索引来计算树上的位置，确保照片随机分布在树身范围内，而不是堆积在顶部
+        // 范围取 0.1 到 0.9 避免太靠近顶部或底部
+        const randomTreeIndex = Math.floor((0.1 + Math.random() * 0.8) * PARTICLE_CONFIG.mainParticleCount);
+        const treePos = calculateTreePosition(randomTreeIndex, PARTICLE_CONFIG.mainParticleCount);
+        
         const particle: ParticleItem = {
           mesh: frameMesh,
           type: 'PHOTO',
           targetPosition: basePos.clone(),
           basePosition: basePos.clone(),
-          treePosition: calculateTreePosition(particlesRef.current.length, PARTICLE_CONFIG.mainParticleCount),
+          treePosition: treePos,
           targetRotation: new THREE.Euler(),
           targetScale: new THREE.Vector3(1, 1, 1),
           velocity: calculateRandomVelocity(),
@@ -137,6 +175,9 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         particlesRef.current.push(particle);
         photoParticlesRef.current.push(particle);
         mainGroup.add(frameMesh);
+        
+        console.log('照片 Mesh 已添加到 mainGroup，当前 mainGroup 子对象数量:', mainGroup.children.length);
+        console.log('当前粒子总数:', particlesRef.current.length);
       };
 
       // 将函数存储到 ref 中，供外部调用
@@ -205,8 +246,29 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
         const time = clock.getElapsedTime();
 
         // 检测模式切换，重置聚焦照片（与原始HTML的switchMode逻辑一致）
-        if (modeRef.current !== previousModeRef.current) {
+        if (modeRef.current !== previousModeRef.current || (modeRef.current === ExperienceMode.TEXT && textRef.current !== previousTextRef.current)) {
+          
+          // 处理材质切换：进入/离开 TEXT 模式
+          if (modeRef.current === ExperienceMode.TEXT && previousModeRef.current !== ExperienceMode.TEXT) {
+            // 进入 TEXT 模式：保存原始材质并应用高亮材质
+            particlesRef.current.forEach(p => {
+              if (!p.mesh.userData.originalMaterial) {
+                p.mesh.userData.originalMaterial = p.mesh.material;
+              }
+              p.mesh.material = textMat;
+            });
+          } else if (modeRef.current !== ExperienceMode.TEXT && previousModeRef.current === ExperienceMode.TEXT) {
+            // 离开 TEXT 模式：恢复原始材质
+            particlesRef.current.forEach(p => {
+              if (p.mesh.userData.originalMaterial) {
+                p.mesh.material = p.mesh.userData.originalMaterial;
+              }
+            });
+          }
+
           previousModeRef.current = modeRef.current;
+          previousTextRef.current = textRef.current;
+          
           if (modeRef.current === ExperienceMode.FOCUS) {
             // 进入FOCUS模式时选择新照片
             if (photoParticlesRef.current.length > 0) {
@@ -216,11 +278,22 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
             // 离开FOCUS模式时清空聚焦照片
             focusedPhotoRef.current = null;
           }
+
+          // 如果进入文字模式，计算文字位置
+          if (modeRef.current === ExperienceMode.TEXT && textRef.current) {
+            textPositionsRef.current = calculateTextPositions(textRef.current, particlesRef.current.length);
+          }
         }
 
-        // 手势控制场景旋转（与原始HTML完全一致的映射逻辑）
-        const targetRotationY = handRef.current.position.x * ANIMATION_CONFIG.gestureRotationSensitivity;
-        const targetRotationX = handRef.current.position.y * (ANIMATION_CONFIG.gestureRotationSensitivity * 0.5);
+        // 手势控制场景旋转
+        // 在 TEXT 和 FOCUS 模式下，强制回正视角，忽略手势旋转
+        let targetRotationY = 0;
+        let targetRotationX = 0;
+
+        if (modeRef.current !== ExperienceMode.TEXT && modeRef.current !== ExperienceMode.FOCUS) {
+          targetRotationY = handRef.current.position.x * ANIMATION_CONFIG.gestureRotationSensitivity;
+          targetRotationX = handRef.current.position.y * (ANIMATION_CONFIG.gestureRotationSensitivity * 0.5);
+        }
         
         mainGroup.rotation.y = THREE.MathUtils.lerp(
           mainGroup.rotation.y,
@@ -233,7 +306,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
           ANIMATION_CONFIG.rotationLerpSpeed
         );
 
-        particlesRef.current.forEach((p) => {
+        particlesRef.current.forEach((p, i) => {
           if (modeRef.current === ExperienceMode.TREE) {
             p.targetPosition.copy(applyTreeRotation(p.treePosition, time));
             p.targetScale.set(1, 1, 1);
@@ -255,9 +328,27 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
               p.targetPosition.copy(calculateBackgroundPosition(p.basePosition, FOCUS_MODE_CONFIG.backgroundDistanceMultiplier));
               p.targetScale.set(FOCUS_MODE_CONFIG.backgroundScaleMultiplier, FOCUS_MODE_CONFIG.backgroundScaleMultiplier, FOCUS_MODE_CONFIG.backgroundScaleMultiplier);
             }
+          } else if (modeRef.current === ExperienceMode.TEXT) {
+            // 文字模式逻辑
+            if (i < textPositionsRef.current.length) {
+              p.targetPosition.copy(textPositionsRef.current[i]);
+              p.targetScale.set(0.5, 0.5, 0.5); // 稍微缩小粒子以适应文字细节
+            } else {
+              // 多余的粒子散开或隐藏
+              // 这里让它们在背景中缓慢漂浮
+              p.basePosition.add(p.velocity);
+              if (isOutOfBounds(p.basePosition)) {
+                p.velocity.multiplyScalar(-1);
+              }
+              p.targetPosition.copy(p.basePosition);
+            }
           }
 
+          // 平滑插值更新位置、旋转和缩放
           p.mesh.position.lerp(p.targetPosition, ANIMATION_CONFIG.positionLerpSpeed);
+          p.mesh.rotation.x = THREE.MathUtils.lerp(p.mesh.rotation.x, p.targetRotation.x, ANIMATION_CONFIG.rotationLerpSpeed);
+          p.mesh.rotation.y = THREE.MathUtils.lerp(p.mesh.rotation.y, p.targetRotation.y, ANIMATION_CONFIG.rotationLerpSpeed);
+          p.mesh.rotation.z = THREE.MathUtils.lerp(p.mesh.rotation.z, p.targetRotation.z, ANIMATION_CONFIG.rotationLerpSpeed);
           p.mesh.scale.lerp(p.targetScale, ANIMATION_CONFIG.scaleLerpSpeed);
           
           // FOCUS模式下，聚焦的照片始终朝向相机（在lerp之后执行）
@@ -270,19 +361,9 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
       };
 
       animate();
-
-      setTimeout(() => onLoaded(), 1000);
-
-      const handleResize = () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        composer.setSize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener('resize', handleResize);
+      onLoaded();
 
       return () => {
-        window.removeEventListener('resize', handleResize);
         renderer.dispose();
         composer.dispose();
       };
