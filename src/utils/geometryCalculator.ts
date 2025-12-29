@@ -291,16 +291,11 @@ export function calculateTextPositions(
   // 将像素坐标转换为 3D 坐标
   // 居中处理：(x - width/2, -(y - height/2))
   // 缩放处理
-  const count = Math.min(particleCount, pixels.length);
   
-  // 如果粒子数量不足以覆盖所有像素，我们只取前 count 个
-  // 如果粒子数量多于像素，多余的粒子可以隐藏或随机分布（这里我们只返回有效位置，Scene3D 处理多余粒子）
-  
-  for (let i = 0; i < pixels.length; i++) {
-    // 简单的映射：每个像素对应一个位置
-    // 为了让粒子填满文字，如果粒子数少于像素数，我们随机采样
-    // 如果粒子数多于像素数，我们循环使用像素位置
-    
+  // 修复逻辑：始终返回 particleCount 个位置，确保所有粒子都参与组成文字
+  // 如果像素点不够，循环复用；如果像素点过多，只取前 particleCount 个（因为 pixels 已经被随机打乱了）
+  for (let i = 0; i < particleCount; i++) {
+    // 循环使用像素位置，确保填满所有粒子
     const pixel = pixels[i % pixels.length];
     
     const x = (pixel.x - width / 2) * scale * 0.1; // 0.1 是额外的缩放系数，适配场景大小

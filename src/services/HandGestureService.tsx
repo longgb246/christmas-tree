@@ -171,31 +171,40 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
       // 3. 识别手势类型
       let gesture: GestureType = 'NONE';
       
-      // 优先检测捏合
+      // 计算伸出的手指数量 (基于比例，具有尺度不变性，更鲁棒)
+      const extendedFingers = countExtendedFingers(landmarks);
+      
+      // 优先检测捏合 (PINCH)
       if (pinchDistance < GESTURE_CONFIG.pinchThreshold) {
         gesture = 'PINCH';
-      } else if (avgDistanceToWrist < GESTURE_CONFIG.fistThreshold) {
-        gesture = 'FIST';
       } else {
-        // 计算伸出的手指数量
-        const extendedFingers = countExtendedFingers(landmarks);
-        
-        switch (extendedFingers) {
-          case 2:
-            gesture = 'TWO';
-            break;
-          case 3:
-            gesture = 'THREE';
-            break;
-          case 4:
-            gesture = 'FOUR';
-            break;
-          default:
-            // 如果没有明确的数字手势，但距离较大，则为 OPEN
-            if (avgDistanceToWrist > GESTURE_CONFIG.openThreshold) {
-              gesture = 'OPEN';
-            }
-            break;
+        // 根据伸出的手指数量进行判断
+        if (extendedFingers === 0) {
+          // 只有当没有手指伸出时，才检测握拳 (FIST)
+          // 这样避免了距离较远时，数字手势被误判为握拳
+          if (avgDistanceToWrist < GESTURE_CONFIG.fistThreshold) {
+            gesture = 'FIST';
+          }
+        } else {
+          // 有手指伸出，判断数字手势
+          switch (extendedFingers) {
+            case 2:
+              gesture = 'TWO';
+              break;
+            case 3:
+              gesture = 'THREE';
+              break;
+            case 4:
+              gesture = 'FOUR';
+              break;
+            default:
+              // 如果没有明确的数字手势 (如 1 或 5)，但距离较大，则为 OPEN
+              // 注意：这里也放宽了 OPEN 的判断，只要手指够多且距离够大
+              if (avgDistanceToWrist > GESTURE_CONFIG.openThreshold || extendedFingers >= 5) {
+                gesture = 'OPEN';
+              }
+              break;
+          }
         }
       }
 

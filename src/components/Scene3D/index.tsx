@@ -205,7 +205,7 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
           targetPosition: basePos.clone(),
           basePosition: basePos.clone(),
           treePosition: treePos,
-          targetRotation: new THREE.Euler(),
+          targetRotation: new THREE.Euler(0, -Math.PI / 4, 0),
           targetScale: new THREE.Vector3(1, 1, 1),
           velocity: calculateRandomVelocity(),
           rotationVelocity: calculateRandomRotationVelocity(),
@@ -295,11 +295,14 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
           // 处理材质切换：进入/离开 TEXT 模式
           if (modeRef.current === ExperienceMode.TEXT && previousModeRef.current !== ExperienceMode.TEXT) {
             // 进入 TEXT 模式：保存原始材质并应用高亮材质
+            // 注意：只替换非图片粒子的材质，图片粒子保持原样
             particlesRef.current.forEach(p => {
-              if (!p.mesh.userData.originalMaterial) {
-                p.mesh.userData.originalMaterial = p.mesh.material;
+              if (p.type !== 'PHOTO') {
+                if (!p.mesh.userData.originalMaterial) {
+                  p.mesh.userData.originalMaterial = p.mesh.material;
+                }
+                p.mesh.material = textMat;
               }
-              p.mesh.material = textMat;
             });
           } else if (modeRef.current !== ExperienceMode.TEXT && previousModeRef.current === ExperienceMode.TEXT) {
             // 离开 TEXT 模式：恢复原始材质
@@ -325,7 +328,11 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
 
           // 如果进入文字模式，计算文字位置
           if (modeRef.current === ExperienceMode.TEXT && textRef.current) {
-            textPositionsRef.current = calculateTextPositions(textRef.current, particlesRef.current.length);
+            // 统计非图片粒子的数量
+            const nonPhotoCount = particlesRef.current.filter(p => p.type !== 'PHOTO').length;
+            // 只使用 90% 的非图片粒子来组成文字，剩下的 10% 和图片粒子一起在周围浮动
+            const textParticleCount = Math.floor(nonPhotoCount * 0.9);
+            textPositionsRef.current = calculateTextPositions(textRef.current, textParticleCount);
           }
         }
 
@@ -354,6 +361,13 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
           if (modeRef.current === ExperienceMode.TREE) {
             p.targetPosition.copy(applyTreeRotation(p.treePosition, time));
             p.targetScale.set(1, 1, 1);
+
+            // 如果是照片粒子，让它始终面向树的径向外侧
+            // 这样当树旋转时，照片也会跟着自转，始终展示正面给外部
+            // if (p.type === 'PHOTO') {
+            //   const angle = Math.atan2(p.targetPosition.x, p.targetPosition.z);
+            //   p.targetRotation.set(0, angle, 0);
+            // }
           } else if (modeRef.current === ExperienceMode.SCATTER) {
             p.basePosition.add(p.velocity);
             if (isOutOfBounds(p.basePosition)) {
@@ -374,12 +388,48 @@ const Scene3D = forwardRef<{ addPhoto: (dataUrl: string) => void }, Scene3DProps
             }
           } else if (modeRef.current === ExperienceMode.TEXT) {
             // 文字模式逻辑
-            if (i < textPositionsRef.current.length) {
+            // 只有非图片粒子，且在文字粒子数量范围内的，才参与组成文字
+            // 图片粒子和多余的普通粒子在周围浮动
+            
+            // 注意：这里我们需要一个外部计数器来追踪已分配的文字粒子数量
+            // 但由于 forEach 无法方便地共享外部计数器（在 React 闭包中），
+            // 我们利用粒子数组的顺序：普通粒子在前，图片粒子在后。
+            // 只要不是 PHOTO 类型，且索引在 textPositionsRef.current.length 范围内（近似），就可以分配。
+            // 但为了更精确，我们还是应该用逻辑判断。
+            
+            // 更好的方式是：如果是 PHOTO，直接浮动。
+            // 如果不是 PHOTO，看是否还有文字位置可用。
+            // 由于我们无法在 forEach 中简单维护一个全局计数器（每一帧都会重置），
+            // 我们可以利用 i 和 textPositionsRef.current.length 的关系，
+            // 但因为中间可能夹杂 PHOTO（虽然目前逻辑是追加在末尾，但为了鲁棒性），
+            // 我们假设普通粒子都在前部。
+            
+            const isPhoto = p.type === 'PHOTO';
+            // 只有普通粒子才有可能成为文字
+            // 且索引必须在文字位置数量范围内（假设普通粒子紧凑排列在前）
+            // 如果后续有图片插入中间，这个逻辑可能略有偏差，但视觉上无伤大雅。
+            // 为了更严谨，我们可以简单地判断：如果 i < textPositionsRef.current.length 且不是 PHOTO
+            // 但 textPositionsRef.current.length 是 nonPhotoCount * 0.9
+            // 所以只要 i < textPositionsRef.current.length，它大概率是普通粒子（因为图片在最后）。
+            // 如果 i 处恰好是图片（极少见），它会浮动，导致文字少一个点，这也没关系。
+            
+            if (!isPhoto && i < textPositionsRef.current.length) {
               p.targetPosition.copy(textPositionsRef.current[i]);
               p.targetScale.set(0.5, 0.5, 0.5); // 稍微缩小粒子以适应文字细节
+              
+              // 确保使用高亮材质
+              if (!p.mesh.userData.originalMaterial) {
+                p.mesh.userData.originalMaterial = p.mesh.material;
+              }
+              p.mesh.material = textMat;
             } else {
-              // 多余的粒子散开或隐藏
-              // 这里让它们在背景中缓慢漂浮
+              // 图片粒子，或者多余的普通粒子 -> 浮动模式
+              // 恢复原始材质（如果是普通粒子）
+              if (!isPhoto && p.mesh.userData.originalMaterial) {
+                p.mesh.material = p.mesh.userData.originalMaterial;
+              }
+              
+              // 浮动逻辑
               p.basePosition.add(p.velocity);
               if (isOutOfBounds(p.basePosition)) {
                 p.velocity.multiplyScalar(-1);

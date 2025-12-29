@@ -9,12 +9,13 @@ import GestureLegend from '@components/UI/GestureLegend';
 import Scene3D from '@components/Scene3D';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>({
+  const [state, setState] = useState<AppState & { hoverGesture: GestureType | null }>({
     mode: ExperienceMode.TREE,
     text: '',
     hand: { gesture: 'NONE', position: { x: 0.5, y: 0.5 } },
     isLoading: true,
     controlsVisible: true,
+    hoverGesture: null,
   });
 
   const scene3DRef = useRef<{ addPhoto: (dataUrl: string) => void } | null>(null);
@@ -23,38 +24,52 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, isLoading: false }));
   }, []);
 
+  // 辅助函数：根据手势获取模式和文本
+  const getModeAndTextFromGesture = (gesture: GestureType, currentMode: ExperienceMode, currentText: string) => {
+    let newMode = currentMode;
+    let newText = currentText;
+
+    switch (gesture) {
+      case 'PINCH':
+        newMode = ExperienceMode.FOCUS;
+        break;
+      case 'FIST':
+        newMode = ExperienceMode.TREE;
+        break;
+      case 'OPEN':
+        newMode = ExperienceMode.SCATTER;
+        break;
+      case 'ONE':
+      case 'TWO':
+      case 'THREE':
+      case 'FOUR':
+      case 'FIVE':
+        newMode = ExperienceMode.TEXT;
+        newText = PARTICLE_CONFIG.textMap[gesture] || '';
+        break;
+      default:
+        // NONE 不改变模式
+        break;
+    }
+    return { newMode, newText };
+  };
+
   const handleHandUpdate = useCallback((handData: HandData) => {
     setState(prev => {
-      // 检查手势是否变化，只有手势变化时才切换模式
-      let newMode = prev.mode;
-      let newText = prev.text;
+      // 优先级逻辑：
+      // 1. 如果有有效的摄像头手势 (非 NONE)，优先使用它
+      // 2. 如果摄像头手势为 NONE，且有悬停手势，使用悬停手势
+      // 3. 否则保持当前模式 (或根据之前的逻辑)
 
-      if (handData.gesture !== prev.hand.gesture) {
-        switch (handData.gesture) {
-          case 'PINCH':
-            newMode = ExperienceMode.FOCUS;
-            break;
-          case 'FIST':
-            newMode = ExperienceMode.TREE;
-            break;
-          case 'OPEN':
-            newMode = ExperienceMode.SCATTER;
-            break;
-          case 'ONE':
-          case 'TWO':
-          case 'THREE':
-          case 'FOUR':
-          case 'FIVE':
-            newMode = ExperienceMode.TEXT;
-            newText = PARTICLE_CONFIG.textMap[handData.gesture] || '';
-            break;
-          default:
-            // NONE 或其他情况保持当前模式
-            break;
-        }
-      }
+      const effectiveGesture = handData.gesture !== 'NONE' ? handData.gesture : (prev.hoverGesture || 'NONE');
       
-      // 只有当手势或模式真正变化时才更新 state
+      // 只有当有效手势发生变化，或者手势数据本身发生变化时，才重新计算模式
+      // 注意：这里我们需要比较 effectiveGesture 与之前的 effectiveGesture (推导出的)
+      // 但为了简单，我们每次都计算目标模式，然后看是否变了
+      
+      const { newMode, newText } = getModeAndTextFromGesture(effectiveGesture, prev.mode, prev.text || '');
+
+      // 只有当状态真正变化时才更新
       if (handData.gesture !== prev.hand.gesture || 
           handData.position.x !== prev.hand.position.x ||
           handData.position.y !== prev.hand.position.y ||
@@ -69,6 +84,27 @@ const App: React.FC = () => {
       }
       
       return prev;
+    });
+  }, []);
+
+  const handleHoverGesture = useCallback((gesture: GestureType | null) => {
+    setState(prev => {
+      // 如果当前 hover 手势没变，直接返回
+      if (gesture === prev.hoverGesture) return prev;
+
+      // 优先级逻辑：
+      // 如果当前有有效的摄像头手势，悬停手势的变化不应影响模式（但需要更新 hoverGesture 状态）
+      // 如果当前摄像头手势为 NONE，悬停手势的变化应触发模式切换
+
+      const effectiveGesture = prev.hand.gesture !== 'NONE' ? prev.hand.gesture : (gesture || 'NONE');
+      const { newMode, newText } = getModeAndTextFromGesture(effectiveGesture, prev.mode, prev.text || '');
+
+      return {
+        ...prev,
+        hoverGesture: gesture,
+        mode: newMode,
+        text: newText
+      };
     });
   }, []);
 
@@ -124,7 +160,7 @@ const App: React.FC = () => {
       
       <HandGestureService onHandUpdate={handleHandUpdate} enabled={true} />
       
-      <GestureLegend />
+      <GestureLegend onHoverGesture={handleHoverGesture} />
 
       <ControlPanel
         visible={state.controlsVisible}
