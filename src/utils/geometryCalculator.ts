@@ -5,7 +5,6 @@
 
 import * as THREE from 'three';
 import { TREE_MODE_CONFIG, SCATTER_MODE_CONFIG, TEXT_MODE_CONFIG } from '@config/particles.config';
-import type { GeometryCalculation } from '@typings/index';
 
 /**
  * 计算树形模式下的粒子位置

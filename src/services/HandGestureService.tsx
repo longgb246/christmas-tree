@@ -231,7 +231,6 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
       // 更通用的方法：检查指尖是否比指关节离手腕更远
       const thumbTip = landmarks[HAND_LANDMARKS.THUMB_TIP];
       const thumbIp = landmarks[3]; // 拇指指间关节
-      const thumbMcp = landmarks[2]; // 拇指掌指关节
       
       // 拇指判断比较复杂，简化为：指尖到小指根部的距离 > 指关节到小指根部的距离
       const pinkyMcp = landmarks[17];
@@ -256,18 +255,6 @@ const HandGestureService: React.FC<HandGestureServiceProps> = ({
       return count;
     };
 
-    /**
-     * 计算两点之间的 3D 距离
-     */
-    const calculateDistance3D = (
-      point1: HandLandmark,
-      point2: HandLandmark
-    ): number => {
-      const dx = point1.x - point2.x;
-      const dy = point1.y - point2.y;
-      const dz = point1.z - point2.z;
-      return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    };
 
     /**
      * 计算两点之间的 2D 距离（忽略 Z 轴）

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ExperienceMode, type HandData, type ParticleItem } from '@typings/index';
 import { SCENE_CONFIG, LIGHTING_CONFIG, LIGHT_POSITIONS, LIGHT_COLORS, POST_PROCESSING_CONFIG, ANIMATION_CONFIG, RENDERER_CONFIG } from '@config/scene.config';
-import { PARTICLE_CONFIG, PARTICLE_SIZES, MATERIAL_COLORS, TREE_MODE_CONFIG, SCATTER_MODE_CONFIG, FOCUS_MODE_CONFIG } from '@config/particles.config';
+import { PARTICLE_CONFIG, PARTICLE_SIZES, MATERIAL_COLORS, FOCUS_MODE_CONFIG } from '@config/particles.config';
 import { createCandyCaneTexture, createDefaultPhotoTexture, createTextureFromImage } from '@utils/textureGenerator';
 import { calculateTreePosition, calculateScatterPosition, calculateRandomVelocity, calculateRandomRotationVelocity, applyTreeRotation, isOutOfBounds, calculateBackgroundPosition, calculateTextPositions } from '@utils/geometryCalculator';
 
