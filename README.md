@@ -2,6 +2,24 @@
 
 这是一个基于 **React**, **Three.js** 和 **MediaPipe** 构建的 3D 交互式圣诞树项目。通过计算机视觉技术，它允许用户使用手势实时控制 3D 粒子系统，体验从圣诞树到粒子云、照片墙以及文字展示的多种形态变换。
 
+**🌐 在线演示 (Live Demo)**: [https://a-christmas-tree.netlify.app/](https://a-christmas-tree.netlify.app/)
+
+## 🎨 视觉效果 (Visual Effects)
+
+<div align="center">
+  <img src="./sources/imgs/img_01.jpg" alt="Visual Effect 1" width="45%">
+  <img src="./sources/imgs/img_02.jpg" alt="Visual Effect 2" width="45%">
+</div>
+
+### 1. 3D 圣诞树
+粒子沿螺旋线排列，配合不同材质（金属、清漆、发光）的装饰品，在点光源和聚光灯的照射下呈现丰富的质感。
+
+### 2. 泛光特效 (Bloom)
+使用 Post-Processing 技术，让高亮部分（如灯光、文字）产生柔和的光晕，增强节日氛围。
+
+### 3. 动态交互
+粒子位置、旋转和缩放都通过平滑插值（Lerp）进行过渡，确保模式切换时的流畅体验。
+
 ## ✨ 功能特性 (Features)
 
 - **3D 粒子系统**：由 1500+ 个粒子组成的动态系统，可在多种形态间平滑过渡。
@@ -87,22 +105,6 @@ npm run build
 // src/components/Scene3D/index.tsx
 targetRotation: new THREE.Euler(0, 0, 0) // 修改这里的 x, y, z 值 (弧度)
 ```
-
-## 🎨 视觉效果 (Visual Effects)
-
-<div align="center">
-  <img src="./sources/imgs/img_01.jpg" alt="Visual Effect 1" width="45%">
-  <img src="./sources/imgs/img_02.jpg" alt="Visual Effect 2" width="45%">
-</div>
-
-### 1. 3D 圣诞树
-粒子沿螺旋线排列，配合不同材质（金属、清漆、发光）的装饰品，在点光源和聚光灯的照射下呈现丰富的质感。
-
-### 2. 泛光特效 (Bloom)
-使用 Post-Processing 技术，让高亮部分（如灯光、文字）产生柔和的光晕，增强节日氛围。
-
-### 3. 动态交互
-粒子位置、旋转和缩放都通过平滑插值（Lerp）进行过渡，确保模式切换时的流畅体验。
 
 ---
 
